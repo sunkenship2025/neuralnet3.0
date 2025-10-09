@@ -14,11 +14,12 @@ venv/
 .vscode/
 
 # Data outputs / artifacts
-outputs/
-*.npy
-*.pt
-*.csv
-*.json
+# Keep datasets and outputs in repo
+# outputs/
+# *.npy
+# *.pt
+# *.csv
+# *.json
 
 # OS files
 .DS_Store
