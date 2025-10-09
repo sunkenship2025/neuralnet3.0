@@ -1,10 +1,11 @@
 # NeuralNet 3.0 – IoT Device Identification
 
 This project trains neural classifiers on the Aalto IoT Device Identification dataset using
-PyTorch. It includes both a multi-layer perceptron (MLP) and an optional 1D convolutional network
-that can capture local interactions between the top-*K* veto-ranked features. Both models evaluate
-on a held-out validation split with the same metrics used by the repository's DecisionTree
-baselines.
+PyTorch. It includes multiple architectures (MLP, CNN, LSTM, CNN+LSTM, Autoencoder) and tree-based
+models (Histogram Gradient Boosting) that can capture patterns in the top-*K* veto-ranked features.
+All models evaluate on a held-out validation split with comprehensive metrics.
+
+**🆕 NEW: REST API for inference!** Deploy trained models as a FastAPI service. See [API Documentation](API_README.md).
 
 > **Note**: The repository currently ships `Aalto_train_IoTDevID (1).csv` and
 > `Aalto_test_IoTDevID (1).csv`. The latter is treated as the validation split referenced in the
@@ -174,8 +175,64 @@ Highlights:
 - Deterministic random seeds are configured for NumPy and PyTorch (`--seed`, default 42).
 - Feature standardisation uses `StandardScaler`, fit on the training split and applied to validation.
 
+## 🌐 REST API for Inference
+
+Deploy your trained models as a REST API! See the complete [API Documentation](API_README.md) for details.
+
+### Quick Start
+
+1. **Export a trained model:**
+   ```bash
+   python export_model.py --model cnn_lstm --model-dir outputs/cnn_lstm_full
+   ```
+
+2. **Start the API server:**
+   ```bash
+   ./start_api.sh
+   # Or manually:
+   # python -m uvicorn api:app --host 0.0.0.0 --port 8000
+   ```
+
+3. **Test the API:**
+   ```bash
+   python test_api.py
+   ```
+
+4. **Access documentation:**
+   - Swagger UI: http://localhost:8000/docs
+   - ReDoc: http://localhost:8000/redoc
+
+### API Features
+
+- 📊 **Multiple Models**: CNN+LSTM, LSTM, CNN, MLP, Histogram GB
+- 📥 **Flexible Input**: JSON feature vectors or CSV file uploads
+- 🚀 **Batch Processing**: Predict multiple samples at once
+- 📈 **Confidence Scores**: Get probability distributions for predictions
+- 🔍 **Feature Inspection**: Query top-K most important features
+
+### Example Usage
+
+```python
+import requests
+
+# Predict from features
+response = requests.post(
+    "http://localhost:8000/predict",
+    json={
+        "features": [{"feature1": 0.5, "feature2": 1.2, ...}],
+        "model_type": "cnn_lstm"
+    }
+)
+print(response.json())
+# Output: {"predictions": ["Smart_Lock"], "probabilities": [...], ...}
+```
+
+See [API_README.md](API_README.md) for complete documentation and examples.
+
 ## Next steps
 
-- Tune hyperparameters such as hidden widths, learning rate, and dropout probability.
-- Export trained model weights for downstream evaluation or deployment.
-- Add confusion matrices or per-class metrics for deeper analysis.
+- ✅ Tune hyperparameters such as hidden widths, learning rate, and dropout probability.
+- ✅ Export trained model weights for downstream evaluation or deployment.
+- 🔄 Add confusion matrices or per-class metrics for deeper analysis.
+- 🚀 Deploy API to production with Docker and load balancing.
+- 📊 Implement ensemble voting across multiple models.
