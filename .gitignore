@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.dylib
+
+# Virtual environments
+.venv/
+env/
+venv/
+*.egg-info/
+
+# VS Code
+.vscode/
+
+# Data outputs / artifacts
+outputs/
+*.npy
+*.pt
+*.csv
+*.json
+
+# OS files
+.DS_Store
