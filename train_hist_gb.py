@@ -204,6 +204,12 @@ def main() -> None:
 
     X_train = load_features(train_df, feature_cols)
     X_valid = load_features(valid_df, feature_cols)
+    
+    # Apply StandardScaler BEFORE training
+    from sklearn.preprocessing import StandardScaler
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_valid_scaled = scaler.transform(X_valid)
 
     model = HistGradientBoostingClassifier(
         learning_rate=config.learning_rate,
@@ -222,11 +228,11 @@ def main() -> None:
         "[info] Training HistGradientBoostingClassifier with "
         f"{X_train.shape[1]} features and {len(label_encoder.classes_)} classes"
     )
-    model.fit(X_train, y_train)
+    model.fit(X_train_scaled, y_train)
 
-    train_pred = model.predict(X_train)
-    valid_pred = model.predict(X_valid)
-    valid_proba = model.predict_proba(X_valid)
+    train_pred = model.predict(X_train_scaled)
+    valid_pred = model.predict(X_valid_scaled)
+    valid_proba = model.predict_proba(X_valid_scaled)
 
     train_metrics = compute_macro_metrics(y_train, train_pred)
     valid_metrics = compute_macro_metrics(y_valid, valid_pred)
@@ -275,6 +281,26 @@ def main() -> None:
         }
     ).to_csv(pred_path, index=False)
     print(f"[info] Saved validation predictions to {pred_path}")
+
+    # Save the trained model and preprocessing artifacts for API deployment
+    import pickle
+    
+    model_path = os.path.join(config.output_dir, "hist_gb_model.pkl")
+    with open(model_path, "wb") as fh:
+        pickle.dump(model, fh)
+    print(f"[info] Saved trained model to {model_path}")
+    
+    # Save the scaler that was actually used during training
+    scaler_path = os.path.join(config.output_dir, "scaler.pkl")
+    with open(scaler_path, "wb") as fh:
+        pickle.dump(scaler, fh)
+    print(f"[info] Saved scaler to {scaler_path}")
+    
+    # Save the label encoder
+    encoder_path = os.path.join(config.output_dir, "label_encoder.pkl")
+    with open(encoder_path, "wb") as fh:
+        pickle.dump(label_encoder, fh)
+    print(f"[info] Saved label encoder to {encoder_path}")
 
 
 if __name__ == "__main__":

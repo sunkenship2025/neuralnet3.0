@@ -18,12 +18,12 @@ from pydantic import BaseModel
 import joblib
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 
-# Import model architectures
-from train_mlp import TabularMLP
-from train_cnn import TabularCNN
-from train_lstm import TabularLSTM
-from train_cnn_lstm import TabularCNNLSTM
-from train_autoencoder import FeedforwardAutoencoder
+# Import model architectures (optional - loaded dynamically)
+# from train_mlp import MLP
+# from train_cnn import TabularCNN
+# from train_lstm import TabularLSTM
+# from train_cnn_lstm import TabularCNNLSTM
+# from train_autoencoder import FeedforwardAutoencoder
 
 app = FastAPI(
     title="IoT Device Identification API",
@@ -41,7 +41,7 @@ class PredictionRequest(BaseModel):
     """Request model for single or batch predictions"""
     features: List[Dict[str, float]]  # List of feature dictionaries
     top_k_features: int = 50  # Number of top features to use
-    model_type: str = "cnn_lstm"  # Which model to use
+    model_type: str = "hgb"  # Which model to use (currently available: hgb)
 
 
 class PredictionResponse(BaseModel):
@@ -63,7 +63,10 @@ def load_feature_ranking(veto_path: str = "veto_average_results (1).csv") -> pd.
 
 def get_top_features(veto_df: pd.DataFrame, top_k: int = 50) -> List[str]:
     """Get top K features from veto ranking"""
-    return veto_df.nlargest(top_k, 'Average')['Feature'].tolist()
+    # Check for column names (handle different CSV formats)
+    feature_col = 'Variable_Name' if 'Variable_Name' in veto_df.columns else 'Feature'
+    score_col = 'Votes' if 'Votes' in veto_df.columns else 'Average'
+    return veto_df.nlargest(top_k, score_col)[feature_col].tolist()
 
 
 def load_model(model_type: str, model_dir: str = "api_models"):
@@ -73,57 +76,69 @@ def load_model(model_type: str, model_dir: str = "api_models"):
     
     import pickle
     
+    # Try to load from exported model directory first
     model_path = Path(model_dir) / model_type
     
-    if not model_path.exists():
-        raise ValueError(f"Model directory not found: {model_path}. Run export_model.py first.")
+    if model_path.exists():
+        # Load preprocessing artifacts
+        with open(model_path / "preprocessing.pkl", "rb") as f:
+            preprocessing = pickle.load(f)
+        
+        # For HGB, use the copied scaler.pkl instead of preprocessing scaler
+        if model_type == "hgb":
+            scaler_path = model_path / "scaler.pkl"
+            if scaler_path.exists():
+                with open(scaler_path, "rb") as f:
+                    preprocessing['scaler'] = pickle.load(f)
+                print(f"  ✓ Using trained scaler from {scaler_path}")
+        
+        # Load metadata
+        with open(model_path / "metadata.json", "r") as f:
+            metadata = json.load(f)
+        
+        model = None
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # Load model based on type
+        if model_type == "cnn_lstm":
+            from train_cnn_lstm import TabularCNNLSTM
+            model = TabularCNNLSTM(
+                input_dim=metadata['input_dim'],
+                num_classes=metadata['num_classes'],
+                conv_channels=[64, 128, 256],
+                kernel_sizes=[7, 5, 3],
+                lstm_hidden=128,
+                lstm_layers=2,
+                dropout=0.3
+            )
+            weights_path = model_path / "model_weights.pt"
+            if weights_path.exists():
+                model.load_state_dict(torch.load(weights_path, map_location=device))
+                model.to(device)
+                model.eval()
+        
+        elif model_type == "hgb":
+            weights_path = model_path / "model.pkl"
+            if weights_path.exists():
+                with open(weights_path, "rb") as f:
+                    model = pickle.load(f)
+        
+        MODELS[model_type] = {
+            'model': model,
+            'preprocessing': preprocessing,
+            'metadata': metadata,
+            'device': device
+        }
+        
+        return MODELS[model_type]
     
-    # Load preprocessing artifacts
-    with open(model_path / "preprocessing.pkl", "rb") as f:
-        preprocessing = pickle.load(f)
-    
-    # Load metadata
-    with open(model_path / "metadata.json", "r") as f:
-        metadata = json.load(f)
-    
-    model = None
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
-    # Load model based on type
-    if model_type == "cnn_lstm":
-        from train_cnn_lstm import TabularCNNLSTM
-        model = TabularCNNLSTM(
-            input_dim=metadata['input_dim'],
-            num_classes=metadata['num_classes'],
-            conv_channels=[64, 128, 256],
-            kernel_sizes=[7, 5, 3],
-            lstm_hidden=128,
-            lstm_layers=2,
-            dropout=0.3
-        )
-        weights_path = model_path / "model_weights.pt"
-        if weights_path.exists():
-            model.load_state_dict(torch.load(weights_path, map_location=device))
-            model.to(device)
-            model.eval()
-    
-    elif model_type == "hgb":
-        weights_path = model_path / "model.pkl"
-        if weights_path.exists():
-            with open(weights_path, "rb") as f:
-                model = pickle.load(f)
-    
+    # If not exported, train a simple model on the fly for demo
     else:
-        raise NotImplementedError(f"Model type {model_type} not yet supported")
-    
-    MODELS[model_type] = {
-        'model': model,
-        'preprocessing': preprocessing,
-        'metadata': metadata,
-        'device': device
-    }
-    
-    return MODELS[model_type]
+        raise ValueError(
+            f"Model directory not found: {model_path}.\n"
+            f"Please run: python export_model.py --model {model_type} --model-dir outputs/{model_type}_*\n"
+            f"Or train a model first using one of the train_*.py scripts."
+        )
 
 
 @app.on_event("startup")
@@ -134,18 +149,37 @@ async def startup_event():
         print("✓ Feature ranking loaded")
     except Exception as e:
         print(f"⚠ Warning: Could not load feature ranking: {e}")
+    
+    # Check for exported models
+    if Path("api_models").exists():
+        exported = [d.name for d in Path("api_models").iterdir() if d.is_dir()]
+        if exported:
+            print(f"✓ Found exported models: {', '.join(exported)}")
+        else:
+            print("⚠ No exported models found in api_models/")
+            print("  Run: python export_model.py --model hgb --model-dir outputs/hgb_run1")
+    else:
+        print("⚠ No api_models directory. Models need to be exported first.")
+        print("  Run: python export_model.py --model hgb --model-dir outputs/hgb_run1")
 
 
 @app.get("/")
 async def root():
     """API health check"""
+    # Dynamically get available models
+    available = []
+    if Path("api_models").exists():
+        available = [d.name for d in Path("api_models").iterdir() if d.is_dir()]
+    
     return {
         "status": "online",
         "message": "IoT Device Identification API",
-        "available_models": ["mlp", "cnn", "lstm", "cnn_lstm", "hgb"],
+        "available_models": available if available else ["hgb (not yet exported)"],
+        "default_model": "hgb",
         "endpoints": {
             "/predict": "POST - Predict device from features",
             "/predict/csv": "POST - Predict devices from CSV file",
+            "/features": "GET - Get top K important features",
             "/health": "GET - API health status"
         }
     }
@@ -175,7 +209,7 @@ async def predict(request: PredictionRequest):
             {"feature1": 0.3, "feature2": 0.9, ...}
         ],
         "top_k_features": 50,
-        "model_type": "cnn_lstm"
+        "model_type": "hgb"
     }
     """
     try:
@@ -200,8 +234,8 @@ async def predict(request: PredictionRequest):
                 detail=f"Missing required features: {list(missing_features)[:10]}..."
             )
         
-        # Select and order features
-        X = df[required_features].values
+        # Select and order features, fill NaN with 0.0 (matching training preprocessing)
+        X = df[required_features].astype(np.float32).fillna(0.0).values
         
         # Preprocess
         X_scaled = preprocessing['scaler'].transform(X)
@@ -247,7 +281,7 @@ async def predict(request: PredictionRequest):
 @app.post("/predict/csv")
 async def predict_csv(
     file: UploadFile = File(...),
-    model_type: str = "cnn_lstm"
+    model_type: str = "hgb"
 ):
     """
     Predict IoT device types from uploaded CSV file
@@ -276,8 +310,8 @@ async def predict_csv(
                 detail=f"CSV missing required features: {list(missing_features)[:10]}..."
             )
         
-        # Select features
-        X = df[required_features].values
+        # Select features and fill NaN with 0.0 (matching training preprocessing)
+        X = df[required_features].astype(np.float32).fillna(0.0).values
         
         # Preprocess
         X_scaled = preprocessing['scaler'].transform(X)
@@ -327,10 +361,17 @@ async def get_features(top_k: int = 50):
     try:
         veto_df = load_feature_ranking()
         top_features = get_top_features(veto_df, top_k)
+        
+        # Handle different column names
+        feature_col = 'Variable_Name' if 'Variable_Name' in veto_df.columns else 'Feature'
+        score_col = 'Votes' if 'Votes' in veto_df.columns else 'Average'
+        
+        importance_data = veto_df.nlargest(top_k, score_col)[[feature_col, score_col]].to_dict('records')
+        
         return {
             "top_k": top_k,
             "features": top_features,
-            "importance_scores": veto_df.nlargest(top_k, 'Average')[['Feature', 'Average']].to_dict('records')
+            "importance_scores": importance_data
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

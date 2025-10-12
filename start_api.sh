@@ -16,6 +16,7 @@ fi
 
 # Activate venv
 echo "📦 Activating virtual environment..."
+# shellcheck disable=SC1091
 source .venv/bin/activate
 
 # Check if FastAPI is installed

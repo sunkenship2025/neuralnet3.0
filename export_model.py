@@ -15,10 +15,22 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 
 # Import model architectures
-from train_cnn_lstm import TabularCNNLSTM
-from train_lstm import TabularLSTM
-from train_cnn import TabularCNN
-from train_mlp import TabularMLP
+try:
+    from train_cnn_lstm import TabularCNNLSTM
+except ImportError:
+    TabularCNNLSTM = None
+try:
+    from train_lstm import TabularLSTM
+except ImportError:
+    TabularLSTM = None
+try:
+    from train_cnn import TabularCNN
+except ImportError:
+    TabularCNN = None
+try:
+    from train_mlp import MLP
+except ImportError:
+    MLP = None
 
 
 def load_data(train_path: str, veto_path: str, top_k: int = 50):
@@ -27,16 +39,20 @@ def load_data(train_path: str, veto_path: str, top_k: int = 50):
     train_df = pd.read_csv(train_path)
     veto_df = pd.read_csv(veto_path)
     
-    # Get target column
-    if 'device' in train_df.columns:
-        target_col = 'device'
-    elif 'label' in train_df.columns:
-        target_col = 'label'
-    else:
-        raise ValueError("No target column found (expected 'device' or 'label')")
+    # Get target column (case-insensitive)
+    target_col = None
+    for col in train_df.columns:
+        if col.lower() in ['device', 'label']:
+            target_col = col
+            break
     
-    # Get top features
-    top_features = veto_df.nlargest(top_k, 'Average')['Feature'].tolist()
+    if target_col is None:
+        raise ValueError(f"No target column found (expected 'device' or 'label'). Found columns: {list(train_df.columns)}")
+    
+    # Get top features (check for column name)
+    feature_col = 'Variable_Name' if 'Variable_Name' in veto_df.columns else 'Feature'
+    score_col = 'Votes' if 'Votes' in veto_df.columns else 'Average'
+    top_features = veto_df.nlargest(top_k, score_col)[feature_col].tolist()
     
     # Check features exist
     missing_features = set(top_features) - set(train_df.columns)
@@ -94,10 +110,7 @@ def export_model(
     print("  → Loading preprocessing artifacts...")
     preprocessing = load_data(train_path, veto_path, top_k)
     
-    # Save preprocessing artifacts
-    with open(export_path / "preprocessing.pkl", "wb") as f:
-        pickle.dump(preprocessing, f)
-    print(f"  ✓ Saved preprocessing.pkl")
+    # DON'T save preprocessing yet - need to fix feature order for HGB first!
     
     # Load and save model weights based on type
     model_dir_path = Path(model_dir)
@@ -132,14 +145,40 @@ def export_model(
             print(f"  ✓ Saved model_weights.pt")
     
     elif model_name == "hgb":
-        # For sklearn models, save the pickle
+        # For sklearn models, copy the saved pickle
         model_path = model_dir_path / "hist_gb_model.pkl"
         if model_path.exists():
             import shutil
             shutil.copy(model_path, export_path / "model.pkl")
             print(f"  ✓ Saved model.pkl")
+            
+            # Load the actual feature list from training metadata
+            metrics_path = model_dir_path / "hist_gb_validation_metrics.json"
+            if metrics_path.exists():
+                with open(metrics_path, 'r') as f:
+                    training_metadata = json.load(f)
+                
+                # Override the feature list with the one used during training
+                preprocessing['top_features'] = training_metadata['config']['feature_names']
+                preprocessing['input_dim'] = len(preprocessing['top_features'])
+                print(f"  ✓ Loaded feature list from training metadata ({len(preprocessing['top_features'])} features)")
+            
+            # Also copy scaler and label encoder if they exist
+            scaler_path = model_dir_path / "scaler.pkl"
+            encoder_path = model_dir_path / "label_encoder.pkl"
+            if scaler_path.exists():
+                shutil.copy(scaler_path, export_path / "scaler.pkl")
+                print(f"  ✓ Copied scaler.pkl")
+            if encoder_path.exists():
+                shutil.copy(encoder_path, export_path / "label_encoder.pkl")
+                print(f"  ✓ Copied label_encoder.pkl")
         else:
             print(f"  ⚠ Warning: Model not found at {model_path}")
+    
+    # NOW save preprocessing with corrected features (for HGB)
+    with open(export_path / "preprocessing.pkl", "wb") as f:
+        pickle.dump(preprocessing, f)
+    print(f"  ✓ Saved preprocessing.pkl")
     
     # Save metadata
     metadata = {
