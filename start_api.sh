@@ -1,10 +1,17 @@
-#!/bin/bash
-# Quick Start Script for IoT Device Identification API
+#!/bin/bash#!/bin/bash
 
-set -e
+# Quick start API launcher# Quick Start Script for IoT Device Identification API
 
-echo "🚀 IoT Device Identification API - Quick Start"
-echo "=============================================="
+
+
+set -eset -e
+
+
+
+cd "$(dirname "$0")"echo "🚀 IoT Device Identification API - Quick Start"
+
+exec ./src/api/start_api.shecho "=============================================="
+
 echo ""
 
 # Check if venv exists

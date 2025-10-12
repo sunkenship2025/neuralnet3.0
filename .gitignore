@@ -14,12 +14,24 @@ venv/
 .vscode/
 
 # Data outputs / artifacts
-# Keep datasets and outputs in repo
-# outputs/
-# *.npy
-# *.pt
-# *.csv
-# *.json
+outputs/*/
+!outputs/.gitkeep
+api_models/*/
+!api_models/.gitkeep
+logs/*.log
+!logs/.gitkeep
+
+# Large model files
+*.pkl
+*.pt
+*.npy
 
 # OS files
 .DS_Store
+*~
+
+# Jupyter notebooks checkpoints
+.ipynb_checkpoints/
+
+# pytest cache
+.pytest_cache/
