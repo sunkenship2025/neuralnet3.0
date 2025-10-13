@@ -41,40 +41,109 @@ neuralnet3.0/
 
 ## Quick Start
 
-### 1. Setup
+### 1. Setup Environment
 
 ```bash
-# Create and activate virtual environment
+# Navigate to project directory
+cd /Users/pranavreddy/Desktop/neuralnet3.0
+
+# Create virtual environment
 python3 -m venv .venv
+
+# Activate virtual environment
 source .venv/bin/activate
 
-# Install dependencies
+# Upgrade pip
+pip install --upgrade pip
+
+# Install all dependencies
 pip install -r requirements.txt
 ```
 
-### 2. Start API
+**Important**: Always activate the virtual environment before running any commands:
+```bash
+source .venv/bin/activate
+```
 
+### 2. Run the API Server
+
+**Option A: Using the quick launcher (recommended)**
 ```bash
 ./start_api.sh
 ```
 
-Access at: http://localhost:8000/docs
+**Option B: Manual start**
+```bash
+# Make sure you're in the project root directory
+cd /Users/pranavreddy/Desktop/neuralnet3.0
 
-### 3. Train Model
+# Activate virtual environment
+source .venv/bin/activate
 
+# Start the API server
+python -m uvicorn src.api.api:app --host 0.0.0.0 --port 8000 --reload
+```
+
+**Expected output:**
+```
+INFO:     Started server process
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000
+```
+
+### 3. Access the API
+
+Once the server is running:
+
+- **Interactive API docs**: http://localhost:8000/docs
+- **Alternative docs**: http://localhost:8000/redoc
+- **Health check**: http://localhost:8000/health
+
+**Test in browser**: Open http://localhost:8000/docs and click "Try it out" on any endpoint.
+
+**Test with curl**:
+```bash
+# Health check
+curl http://localhost:8000/health
+
+# Make a prediction (example)
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"features": [{"feature_1": 0.5, "feature_2": 1.2}]}'
+```
+
+### 4. Stop the API
+
+Press `Ctrl+C` in the terminal where the server is running, or:
+```bash
+# Kill process on port 8000
+lsof -ti:8000 | xargs kill -9
+```
+
+### 5. Train a New Model (Optional)
+
+**Option A: Using the quick launcher**
 ```bash
 ./train.sh
 ```
 
-Or manually:
+**Option B: Manual training**
 ```bash
+# Make sure virtual environment is active
+source .venv/bin/activate
+
+# Train HGB model (recommended)
 python -m src.training.train_hist_gb \
   --train-csv "data/Aalto_train_IoTDevID (1).csv" \
   --valid-csv "data/Aalto_test_IoTDevID (1).csv" \
   --feature-ranking-csv "data/veto_average_results (1).csv" \
   --top-k 48 \
-  --max-iter 300
+  --max-iter 300 \
+  --output-dir outputs/my_new_model
 ```
+
+**Output**: Trained model saved in `outputs/my_new_model/`
 
 ## Model Performance
 
@@ -144,11 +213,56 @@ This packages the model with correct preprocessing for API deployment.
 
 ## Troubleshooting
 
-| Problem | Solution |
-|---------|----------|
-| `ModuleNotFoundError: No module named 'src'` | Run from project root |
-| Poor API accuracy | Check sklearn version: `pip install scikit-learn==1.7.2` |
-| Port 8000 in use | `lsof -ti:8000 \| xargs kill -9` |
+### Common Issues
+
+**Problem**: `ModuleNotFoundError: No module named 'src'`  
+**Solution**: Make sure you're running from the project root directory:
+```bash
+cd /Users/pranavreddy/Desktop/neuralnet3.0
+python -m uvicorn src.api.api:app --port 8000
+```
+
+**Problem**: `bash: ./start_api.sh: Permission denied`  
+**Solution**: Make the script executable:
+```bash
+chmod +x start_api.sh
+chmod +x train.sh
+```
+
+**Problem**: Port 8000 already in use  
+**Solution**: Kill the process using port 8000:
+```bash
+lsof -ti:8000 | xargs kill -9
+```
+
+**Problem**: Virtual environment not activated  
+**Solution**: You'll see `(.venv)` in your terminal prompt when active. If not:
+```bash
+source .venv/bin/activate
+```
+
+**Problem**: Poor API prediction accuracy  
+**Solution**: Check sklearn version matches training:
+```bash
+pip install scikit-learn==1.7.2
+```
+
+**Problem**: Missing data files  
+**Solution**: Ensure all data files are in the `data/` directory:
+```bash
+ls -lh data/
+# Should show:
+# Aalto_train_IoTDevID (1).csv
+# Aalto_test_IoTDevID (1).csv
+# veto_average_results (1).csv
+```
+
+**Problem**: API returns errors about missing model files  
+**Solution**: Check that the model exists:
+```bash
+ls -lh api_models/hgb/
+# Should show: model.pkl, scaler.pkl, label_encoder.pkl, preprocessing.pkl
+```
 
 ## Documentation
 
