@@ -1,16 +1,31 @@
 # IoT Device Identification Neural Network
 
 Machine learning system for identifying IoT devices from network traffic patterns.  
-**Current accuracy: 98.36%** with Histogram Gradient Boosting Classifier.
+**Current accuracy: 88.84%** with Histogram Gradient Boosting Classifier.
 
 ## Current Status
 
 - **Production Model**: HGB (Histogram Gradient Boosting)
 - **Location**: `outputs/hgb_test/` → `api_models/hgb/`
-- **Accuracy**: 98.36% on 19,932 validation samples
+- **Accuracy**: 88.84% on 19,932 validation samples
 - **API**: Ready at http://localhost:8000
 
-� **[Full Status Report](STATUS.md)**
+📊 **[Full Status Report](STATUS.md)**
+
+## Model Performance Comparison
+
+| Model            | Accuracy | Balanced Acc | F1 (Macro) | Precision | Recall | Cohen's Kappa      |
+|-------            |----------|--------------|------------|-----------|--------|---------------|
+| **HistGradientBoosting** ⭐ | **88.84%** | **87.36%** | **0.8284** | **0.8178** | **0.8736** | **0.8786** |
+| LSTM (Cosine Schedule) | 65.96% | 60.76% | 0.6216 | 0.6577 | 0.6076 | 0.6281 |
+| CNN+LSTM Hybrid | 65.65% | 61.31% | 0.6246 | 0.6732 | 0.6131 | 0.6250 |
+| CNN | 64.03% | 62.06% | 0.6436 | 0.6956 | 0.6206 | 0.6071 |
+| LSTM | 61.27% | 56.47% | 0.5799 | 0.6179 | 0.5647 | 0.5767 |
+| MLP | 57.70% | 51.75% | 0.5279 | 0.6205 | 0.5175 | 0.5368 |
+
+**Key Insight**: HistGradientBoosting outperforms all neural networks by 22-31 percentage points because network traffic data is tabular, which tree ensembles handle better than deep learning.
+
+Run `python src/compare_models.py` to regenerate this comparison.
 
 ## Project Structure
 
@@ -147,12 +162,18 @@ python -m src.training.train_hist_gb \
 
 ## Model Performance
 
+**Best Model: HistGradientBoosting (88.84% accuracy)**
+
 | Metric | Value |
 |--------|-------|
 | Model | Histogram Gradient Boosting |
-| Accuracy | 98.36% |
+| Accuracy | 88.84% |
+| Balanced Accuracy | 87.36% |
+| F1-Score (Macro) | 0.8284 |
+| Precision (Macro) | 0.8178 |
+| Recall (Macro) | 0.8736 |
 | Classes | 27 IoT devices |
-| Features | 48 (top-ranked) |
+| Features | 63 (top-ranked via VETO) |
 | Training samples | ~22,000 |
 | Validation samples | 19,932 |
 
